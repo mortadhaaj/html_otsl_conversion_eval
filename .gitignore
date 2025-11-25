@@ -50,3 +50,4 @@ htmlcov/
 # Temporary files
 *.tmp
 .cache/
+.claude/
