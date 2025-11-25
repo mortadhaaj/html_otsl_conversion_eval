@@ -1,0 +1,47 @@
+<!-- Test case: Complex merging in tbody -->
+<table border="1">
+  <caption>Project Schedule Matrix</caption>
+  <thead>
+    <tr>
+      <th>Phase</th>
+      <th>Task</th>
+      <th>Q1</th>
+      <th>Q2</th>
+      <th>Q3</th>
+      <th>Q4</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="3">Planning</td>
+      <td>Requirements</td>
+      <td colspan="2">Active</td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Design</td>
+      <td></td>
+      <td colspan="2">Active</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Review</td>
+      <td></td>
+      <td></td>
+      <td colspan="2">Active</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Development</td>
+      <td>Implementation</td>
+      <td></td>
+      <td colspan="3">In Progress</td>
+    </tr>
+    <tr>
+      <td>Testing</td>
+      <td></td>
+      <td></td>
+      <td colspan="2">Scheduled</td>
+    </tr>
+  </tbody>
+</table>

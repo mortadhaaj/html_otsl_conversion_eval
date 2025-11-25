@@ -1,0 +1,34 @@
+<!-- Edge case: Large rowspan and colspan -->
+<table border="1">
+  <caption>Layout Test</caption>
+  <thead>
+    <tr>
+      <th>H1</th>
+      <th>H2</th>
+      <th>H3</th>
+      <th>H4</th>
+      <th>H5</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="4" colspan="2">Large Merged Cell (4x2)</td>
+      <td>A</td>
+      <td>B</td>
+      <td>C</td>
+    </tr>
+    <tr>
+      <td>D</td>
+      <td>E</td>
+      <td>F</td>
+    </tr>
+    <tr>
+      <td colspan="3">Wide Cell (1x3)</td>
+    </tr>
+    <tr>
+      <td>G</td>
+      <td>H</td>
+      <td>I</td>
+    </tr>
+  </tbody>
+</table>
