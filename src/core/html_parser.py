@@ -75,6 +75,14 @@ class HTMLTableParser:
         # Identify column and row headers
         column_headers, row_headers = self._identify_headers(cells, row_sections, num_rows, num_cols)
 
+        # Detect explicit thead/tbody/tfoot tags
+        has_explicit_thead = table_elem.find('.//thead') is not None
+        has_explicit_tbody = table_elem.find('.//tbody') is not None
+        has_explicit_tfoot = table_elem.find('.//tfoot') is not None
+
+        # Identify tfoot rows
+        tfoot_rows = [i for i, section in enumerate(row_sections) if section == 'tfoot']
+
         # Create TableStructure
         table = TableStructure(
             num_rows=num_rows,
@@ -83,7 +91,11 @@ class HTMLTableParser:
             caption=caption_content,
             has_border=has_border,
             column_headers=column_headers,
-            row_headers=row_headers
+            row_headers=row_headers,
+            has_explicit_thead=has_explicit_thead,
+            has_explicit_tbody=has_explicit_tbody,
+            has_explicit_tfoot=has_explicit_tfoot,
+            tfoot_rows=tfoot_rows
         )
 
         return table

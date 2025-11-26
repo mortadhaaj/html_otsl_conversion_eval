@@ -50,6 +50,18 @@ class OTSLTableBuilder:
         if table.caption:
             parts.append(f'<caption>{table.caption.text}</caption>')
 
+        # Add structure metadata (preserve thead/tbody/tfoot information)
+        if table.has_explicit_thead:
+            parts.append('<has_thead>')
+        if table.has_explicit_tbody:
+            parts.append('<has_tbody>')
+        if table.has_explicit_tfoot:
+            parts.append('<has_tfoot>')
+            # Add tfoot row indices
+            if table.tfoot_rows:
+                tfoot_indices = ','.join(str(r) for r in sorted(table.tfoot_rows))
+                parts.append(f'<tfoot_rows>{tfoot_indices}</tfoot_rows>')
+
         # Add location tags (random coordinates)
         if self.include_location:
             loc_tags = self._generate_location_tags()

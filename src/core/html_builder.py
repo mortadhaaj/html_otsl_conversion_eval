@@ -61,39 +61,64 @@ class HTMLTableBuilder:
             caption_elem.text = table.caption.text
 
         # Organize rows into sections
-        thead_rows, tbody_rows = self._organize_rows(table)
+        thead_rows, tbody_rows, tfoot_rows = self._organize_rows(table)
 
-        # Build thead if needed
-        if thead_rows or self.normalize_for_teds:
+        if self.normalize_for_teds:
+            # Always create thead and tbody for TEDS compatibility
             thead_elem = etree.SubElement(table_elem, 'thead')
-            rows_to_include = thead_rows if thead_rows else [0]  # Use first row if normalizing
+            rows_to_include = thead_rows if thead_rows else [0]
             for row_idx in rows_to_include:
                 self._build_row(thead_elem, table, row_idx)
 
-        # Build tbody
-        tbody_elem = etree.SubElement(table_elem, 'tbody')
-        tbody_start = max(thead_rows) + 1 if thead_rows else (1 if self.normalize_for_teds else 0)
-        for row_idx in tbody_rows:
-            if row_idx >= tbody_start:  # Skip rows already in thead
-                self._build_row(tbody_elem, table, row_idx)
+            tbody_elem = etree.SubElement(table_elem, 'tbody')
+            tbody_start = max(thead_rows) + 1 if thead_rows else 1
+            for row_idx in tbody_rows:
+                if row_idx >= tbody_start:
+                    self._build_row(tbody_elem, table, row_idx)
+        else:
+            # Preserve original structure
+            # Build thead only if original had it
+            if table.has_explicit_thead and thead_rows:
+                thead_elem = etree.SubElement(table_elem, 'thead')
+                for row_idx in thead_rows:
+                    self._build_row(thead_elem, table, row_idx)
+                # Remove thead rows from tbody_rows
+                tbody_rows = [r for r in tbody_rows if r not in thead_rows]
+
+            # Build tbody only if original had it
+            if table.has_explicit_tbody:
+                tbody_elem = etree.SubElement(table_elem, 'tbody')
+                for row_idx in tbody_rows:
+                    self._build_row(tbody_elem, table, row_idx)
+            else:
+                # No tbody - add rows directly to table
+                for row_idx in tbody_rows:
+                    self._build_row(table_elem, table, row_idx)
+
+            # Build tfoot if original had it
+            if table.has_explicit_tfoot and tfoot_rows:
+                tfoot_elem = etree.SubElement(table_elem, 'tfoot')
+                for row_idx in tfoot_rows:
+                    self._build_row(tfoot_elem, table, row_idx)
 
         # Convert to HTML string
         html_str = etree.tostring(table_elem, encoding='unicode', method='html', pretty_print=True)
 
         return html_str
 
-    def _organize_rows(self, table: TableStructure) -> tuple[List[int], List[int]]:
+    def _organize_rows(self, table: TableStructure) -> tuple[List[int], List[int], List[int]]:
         """
-        Organize rows into thead and tbody sections.
+        Organize rows into thead, tbody, and tfoot sections.
 
         Returns:
-            Tuple of (thead_row_indices, tbody_row_indices)
+            Tuple of (thead_row_indices, tbody_row_indices, tfoot_row_indices)
         """
         thead_rows = sorted(table.column_headers) if table.column_headers else []
+        tfoot_rows = sorted(table.tfoot_rows) if table.tfoot_rows else []
         all_rows = list(range(table.num_rows))
-        tbody_rows = [r for r in all_rows if r not in thead_rows]
+        tbody_rows = [r for r in all_rows if r not in thead_rows and r not in tfoot_rows]
 
-        return thead_rows, tbody_rows
+        return thead_rows, tbody_rows, tfoot_rows
 
     def _build_row(self, parent_elem, table: TableStructure, row_idx: int):
         """

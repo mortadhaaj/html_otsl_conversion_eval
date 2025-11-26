@@ -70,6 +70,10 @@ class TableStructure:
     has_border: bool = True
     column_headers: List[int] = field(default_factory=list)  # Row indices with column headers
     row_headers: List[int] = field(default_factory=list)  # Column indices with row headers
+    has_explicit_thead: bool = False  # Whether original HTML had explicit <thead> tag
+    has_explicit_tbody: bool = False  # Whether original HTML had explicit <tbody> tag
+    has_explicit_tfoot: bool = False  # Whether original HTML had explicit <tfoot> tag
+    tfoot_rows: List[int] = field(default_factory=list)  # Row indices in tfoot section
 
     def get_cell_at(self, row: int, col: int) -> Optional[Cell]:
         """

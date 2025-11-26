@@ -74,6 +74,28 @@ class OTSLTableParser:
             )
             content = content[caption_match.end():].strip()
 
+        # Extract structure metadata (thead/tbody/tfoot flags)
+        has_explicit_thead = False
+        has_explicit_tbody = False
+        has_explicit_tfoot = False
+        tfoot_rows = []
+
+        if content.startswith('<has_thead>'):
+            has_explicit_thead = True
+            content = content[11:].strip()  # Remove <has_thead>
+        if content.startswith('<has_tbody>'):
+            has_explicit_tbody = True
+            content = content[11:].strip()  # Remove <has_tbody>
+        if content.startswith('<has_tfoot>'):
+            has_explicit_tfoot = True
+            content = content[11:].strip()  # Remove <has_tfoot>
+            # Extract tfoot row indices
+            tfoot_match = re.match(r'<tfoot_rows>([\d,]+)</tfoot_rows>', content)
+            if tfoot_match:
+                tfoot_indices = tfoot_match.group(1)
+                tfoot_rows = [int(x) for x in tfoot_indices.split(',')]
+                content = content[tfoot_match.end():].strip()
+
         # Extract and remove location tags
         loc_pattern = r'(?:<loc_\d+>)+'
         content = re.sub(loc_pattern, '', content, count=1).strip()
@@ -100,7 +122,11 @@ class OTSLTableParser:
             caption=caption_content,
             has_border=True,  # OTSL doesn't specify border, default to True
             column_headers=column_headers,
-            row_headers=row_headers
+            row_headers=row_headers,
+            has_explicit_thead=has_explicit_thead,
+            has_explicit_tbody=has_explicit_tbody,
+            has_explicit_tfoot=has_explicit_tfoot,
+            tfoot_rows=tfoot_rows
         )
 
         return table
