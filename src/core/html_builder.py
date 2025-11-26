@@ -159,7 +159,26 @@ class HTMLTableBuilder:
             # Set cell content
             if cell.content:
                 content_text = self._render_cell_content(cell.content)
-                cell_elem.text = content_text
+
+                # Check if content contains HTML tags
+                if cell.content.has_math_tags or any(tag in content_text for tag in ['<sup>', '<sub>', '<b>', '<i>', '<strong>', '<em>', '<u>']):
+                    # Parse and insert HTML content
+                    try:
+                        from lxml import html as lxml_html
+                        # Wrap in a temporary div to parse
+                        temp_html = f'<div>{content_text}</div>'
+                        temp_elem = lxml_html.fromstring(temp_html)
+
+                        # Copy text and children to cell
+                        cell_elem.text = temp_elem.text
+                        for child in temp_elem:
+                            cell_elem.append(child)
+                    except:
+                        # Fallback to plain text if parsing fails
+                        cell_elem.text = content_text
+                else:
+                    # Plain text
+                    cell_elem.text = content_text
 
             # Mark columns as added
             for c in range(cell.col_idx, cell.col_idx + cell.colspan):

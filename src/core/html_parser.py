@@ -251,27 +251,50 @@ class HTMLTableParser:
         return cells, occupancy_grid
 
     def _get_element_text(self, elem) -> str:
-        """Get text content from element, including tail text."""
-        text_parts = []
+        """
+        Get text content from element.
 
-        # Get text content (recursively)
-        def collect_text(el):
-            if el.text:
-                text_parts.append(el.text)
-            for child in el:
-                collect_text(child)
-                if child.tail:
-                    text_parts.append(child.tail)
+        For cells with inline HTML tags (sup, sub, b, i, etc.),
+        preserve the HTML structure. Otherwise extract plain text.
+        """
+        from lxml import etree
 
-        collect_text(elem)
-        text = ''.join(text_parts)
+        # Check if element has inline HTML tags we want to preserve
+        inline_tags = {'sup', 'sub', 'b', 'i', 'strong', 'em', 'u', 'span', 'a'}
+        has_inline_html = False
 
-        if self.normalize_whitespace:
-            # Normalize whitespace
-            import re
-            text = re.sub(r'\s+', ' ', text).strip()
+        for child in elem.iter():
+            if child != elem and child.tag in inline_tags:
+                has_inline_html = True
+                break
 
-        return text
+        if has_inline_html:
+            # Preserve HTML structure - get inner HTML
+            text = elem.text or ''
+            for child in elem:
+                text += etree.tostring(child, encoding='unicode', method='html')
+            return text.strip()
+        else:
+            # Extract plain text only
+            text_parts = []
+
+            def collect_text(el):
+                if el.text:
+                    text_parts.append(el.text)
+                for child in el:
+                    collect_text(child)
+                    if child.tail:
+                        text_parts.append(child.tail)
+
+            collect_text(elem)
+            text = ''.join(text_parts)
+
+            if self.normalize_whitespace:
+                # Normalize whitespace
+                import re
+                text = re.sub(r'\s+', ' ', text).strip()
+
+            return text
 
     def _extract_cell_content(self, cell_elem, text: str) -> CellContent:
         """

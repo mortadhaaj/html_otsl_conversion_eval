@@ -250,11 +250,13 @@ class OTSLTableParser:
         """
         results = []
 
-        # Pattern to match tag and optional content
-        # Matches: <tag>content where content is everything up to next < or end
-        pattern = r'<(ched|rhed|fcel|ecel|lcel|ucel|xcel)>([^<]*)'
+        # Pattern to match OTSL tag and content
+        # Content is everything up to the next OTSL tag (or end of string)
+        # This preserves HTML tags like <sup>, <sub>, etc. within content
+        # Lookahead specifically checks for OTSL tags with closing >, not generic < or </
+        pattern = r'<(ched|rhed|fcel|ecel|lcel|ucel|xcel)>(.*?)(?=<(?:ched|rhed|fcel|ecel|lcel|ucel|xcel|nl)>|$)'
 
-        matches = re.findall(pattern, row_str)
+        matches = re.findall(pattern, row_str, re.DOTALL)
 
         for tag_type, content_text in matches:
             results.append((tag_type, content_text.strip()))
