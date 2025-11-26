@@ -53,7 +53,9 @@ class HTMLTableParser:
                 # html5lib uses xml.etree which doesn't support xpath, so we need lxml
                 import xml.etree.ElementTree as ET
                 html_bytes = ET.tostring(doc, encoding='utf-8', method='html')
-                tree = lxml_html.fromstring(html_bytes)
+                # Decode UTF-8 bytes to string to avoid encoding issues
+                html_text = html_bytes.decode('utf-8')
+                tree = lxml_html.fromstring(html_text)
                 used_fallback = True
             except Exception as e2:
                 raise ValueError(f"Failed to parse HTML: {e}, fallback also failed: {e2}")
@@ -78,7 +80,9 @@ class HTMLTableParser:
                 # Convert html5lib's ElementTree.Element to lxml
                 import xml.etree.ElementTree as ET
                 html_bytes = ET.tostring(doc, encoding='utf-8', method='html')
-                tree = lxml_html.fromstring(html_bytes)
+                # Decode UTF-8 bytes to string to avoid encoding issues
+                html_text = html_bytes.decode('utf-8')
+                tree = lxml_html.fromstring(html_text)
                 table_elem = self._find_table(tree)
                 if table_elem is not None:
                     caption_content = self._extract_caption(table_elem)
