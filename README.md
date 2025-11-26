@@ -66,6 +66,12 @@ Bidirectional table conversion system between HTML and Docling OTSL formats with
 13. **edge_case_mixed_headers.html** - th elements in tbody (row headers)
 14. **edge_case_latex_complex.html** - Complex LaTeX with superscripts
 
+### Advanced Edge Cases
+15. **edge_case_asymmetric.html** - Asymmetric structure with mixed spans (5x4, 11 cells)
+16. **edge_case_long_content.html** - Very long text content (research abstracts)
+17. **edge_case_max_spanning.html** - Maximum spanning complexity (7x5, 20 cells)
+18. **edge_case_large_table.html** - Large table (13x13, 169 cells - multiplication table)
+
 ## Current Status
 
 ### ✅ Completed
@@ -77,10 +83,11 @@ Bidirectional table conversion system between HTML and Docling OTSL formats with
 - [x] OTSL parser with complex spanning support
 - [x] OTSL builder with token generation
 - [x] High-level API for bidirectional conversion
-- [x] 14 comprehensive test cases (HTML + OTSL pairs)
-- [x] Full bidirectional conversion (HTML ↔ OTSL) - **14/14 tests passing**
+- [x] 18 comprehensive test cases (HTML + OTSL pairs)
+- [x] Full bidirectional conversion (HTML ↔ OTSL) - **18/18 tests passing**
 - [x] Pytest unit test suite (65/75 tests passing - 87%)
 - [x] TEDS integration with normalization utilities
+- [x] Advanced edge cases: asymmetric tables, long content, max spanning, large tables
 
 ### 📋 Future Enhancements
 - [ ] Fix remaining pytest test failures (attribute naming)
