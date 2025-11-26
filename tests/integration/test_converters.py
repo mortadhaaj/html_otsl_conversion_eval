@@ -60,7 +60,7 @@ class TestOTSLToHTML:
 
     def test_with_headers(self, converter):
         """Test OTSL to HTML with headers."""
-        otsl = "<otsl><loc_10><loc_20><loc_100><loc_200><ched>H<nl><fcel>D<nl></otsl>"
+        otsl = "<otsl><has_thead><has_tbody><loc_10><loc_20><loc_100><loc_200><ched>H<nl><fcel>D<nl></otsl>"
         html = converter.otsl_to_html(otsl)
 
         assert "<thead>" in html
