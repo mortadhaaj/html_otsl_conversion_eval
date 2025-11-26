@@ -115,41 +115,64 @@ class OTSLTableParser:
         Returns:
             Tuple of (cells, num_rows, num_cols)
         """
-        # First pass: determine grid dimensions
-        max_cols = 0
-        for row_str in rows_raw:
-            tags = self._extract_tags(row_str)
-            max_cols = max(max_cols, len(tags))
+        # Parse all rows to get tag lists
+        all_row_tags = [self._parse_row_tags(row) for row in rows_raw]
 
+        # Determine grid dimensions
+        max_cols = max(len(tags) for tags in all_row_tags) if all_row_tags else 0
         num_rows = len(rows_raw)
         num_cols = max_cols
 
-        # Create occupancy grid to track which cells occupy which positions
-        # -1 = unoccupied, >= 0 = cell index
+        # Create occupancy grid
         occupancy_grid = [[-1] * num_cols for _ in range(num_rows)]
         cells = []
         cell_idx = 0
 
-        # Second pass: build cells
-        for row_idx, row_str in enumerate(rows_raw):
-            tags_and_content = self._parse_row_tags(row_str)
-            col_idx = 0
+        # Build cells
+        for row_idx, tag_list in enumerate(all_row_tags):
+            tag_idx = 0  # Index into tag_list
+            grid_col = 0  # Current grid column
 
-            for tag_type, content_text in tags_and_content:
-                # Find next available column
-                while col_idx < num_cols and occupancy_grid[row_idx][col_idx] != -1:
-                    col_idx += 1
+            while tag_idx < len(tag_list):
+                tag_type, content_text = tag_list[tag_idx]
 
-                if col_idx >= num_cols:
-                    # Skip overflow
+                # Check if this is a spanning marker (not an actual cell)
+                if tag_type in [TAG_LEFT_CELL, TAG_UP_CELL, TAG_CROSS_CELL]:
+                    # Spanning markers mark the current grid position
+                    # They correspond to cells that span from previous rows/columns
+                    if grid_col < num_cols and occupancy_grid[row_idx][grid_col] == -1:
+                        occupancy_grid[row_idx][grid_col] = -2  # Special marker
+                    grid_col += 1
+                    tag_idx += 1
+                    continue
+
+                # For actual cells, skip grid columns occupied by cells from previous rows
+                while grid_col < num_cols and occupancy_grid[row_idx][grid_col] != -1:
+                    grid_col += 1
+
+                if grid_col >= num_cols:
                     break
 
-                # Determine if this is a spanning marker
-                if tag_type in [TAG_LEFT_CELL, TAG_UP_CELL, TAG_CROSS_CELL, TAG_EMPTY_CELL]:
-                    # These are markers, not actual cells
-                    # Mark as occupied but don't create cell
-                    occupancy_grid[row_idx][col_idx] = -2  # Special marker for span continuation
-                    col_idx += 1
+                # Empty cells DO create a cell with empty content
+                if tag_type == TAG_EMPTY_CELL:
+                    # Create empty cell
+                    cell_content = CellContent(text="", latex_formulas=[], has_math_tags=False)
+
+                    cell = Cell(
+                        row_idx=row_idx,
+                        col_idx=grid_col,
+                        rowspan=1,
+                        colspan=1,
+                        content=cell_content,
+                        is_header=False,
+                        header_type=None
+                    )
+
+                    cells.append(cell)
+                    occupancy_grid[row_idx][grid_col] = cell_idx
+                    cell_idx += 1
+                    grid_col += 1
+                    tag_idx += 1
                     continue
 
                 # Determine if header
@@ -159,15 +182,15 @@ class OTSLTableParser:
                 # Create cell content
                 cell_content = self._create_cell_content(content_text)
 
-                # Determine spans by looking ahead for continuation markers
-                rowspan, colspan = self._determine_spans(
-                    row_idx, col_idx, rows_raw, num_rows, num_cols, occupancy_grid
+                # Determine spans by looking ahead in tag_list
+                rowspan, colspan = self._determine_spans_from_tags(
+                    row_idx, grid_col, tag_idx, all_row_tags, num_rows, num_cols
                 )
 
                 # Create cell
                 cell = Cell(
                     row_idx=row_idx,
-                    col_idx=col_idx,
+                    col_idx=grid_col,
                     rowspan=rowspan,
                     colspan=colspan,
                     content=cell_content,
@@ -179,18 +202,15 @@ class OTSLTableParser:
 
                 # Mark occupancy
                 for r in range(row_idx, min(row_idx + rowspan, num_rows)):
-                    for c in range(col_idx, min(col_idx + colspan, num_cols)):
+                    for c in range(grid_col, min(grid_col + colspan, num_cols)):
                         occupancy_grid[r][c] = cell_idx
 
                 cell_idx += 1
-                col_idx += colspan
+                grid_col += colspan
+                # Skip over the cell tag plus any colspan markers (lcel/xcel)
+                tag_idx += 1 + (colspan - 1)
 
         return cells, num_rows, num_cols
-
-    def _extract_tags(self, row_str: str) -> List[str]:
-        """Extract all tags from a row string."""
-        tag_pattern = r'<(ched|rhed|fcel|ecel|lcel|ucel|xcel)>'
-        return re.findall(tag_pattern, row_str)
 
     def _parse_row_tags(self, row_str: str) -> List[Tuple[str, str]]:
         """
@@ -203,93 +223,82 @@ class OTSLTableParser:
             List of (tag_type, content_text) tuples
         """
         results = []
-        tag_pattern = r'<(ched|rhed|fcel|ecel|lcel|ucel|xcel)>'
 
-        # Split by tags but keep tags
-        parts = re.split(tag_pattern, row_str)
+        # Pattern to match tag and optional content
+        # Matches: <tag>content where content is everything up to next < or end
+        pattern = r'<(ched|rhed|fcel|ecel|lcel|ucel|xcel)>([^<]*)'
 
-        i = 0
-        while i < len(parts):
-            part = parts[i].strip()
-            if not part:
-                i += 1
-                continue
+        matches = re.findall(pattern, row_str)
 
-            # Check if this is a tag name (from split)
-            if part in [TAG_COL_HEADER, TAG_ROW_HEADER, TAG_FILLED_CELL,
-                       TAG_EMPTY_CELL, TAG_LEFT_CELL, TAG_UP_CELL, TAG_CROSS_CELL]:
-                tag_type = part
-
-                # Get content (next part if not a tag)
-                content_text = ""
-                if i + 1 < len(parts):
-                    next_part = parts[i + 1].strip()
-                    # Check if next part is not a tag
-                    if next_part and next_part not in [TAG_COL_HEADER, TAG_ROW_HEADER, TAG_FILLED_CELL,
-                                                        TAG_EMPTY_CELL, TAG_LEFT_CELL, TAG_UP_CELL, TAG_CROSS_CELL]:
-                        content_text = next_part
-                        i += 1  # Skip next part as we consumed it
-
-                results.append((tag_type, content_text))
-
-            i += 1
+        for tag_type, content_text in matches:
+            results.append((tag_type, content_text.strip()))
 
         return results
 
-    def _determine_spans(self, row_idx: int, col_idx: int, rows_raw: List[str],
-                        num_rows: int, num_cols: int, occupancy_grid: List[List[int]]) -> Tuple[int, int]:
+    def _determine_spans_from_tags(self, row_idx: int, grid_col: int, tag_idx: int,
+                                   all_row_tags: List[List[Tuple[str, str]]],
+                                   num_rows: int, num_cols: int) -> Tuple[int, int]:
         """
-        Determine rowspan and colspan by looking ahead for continuation markers.
+        Determine rowspan and colspan by looking ahead in the tag lists.
 
         Args:
             row_idx: Current row index
-            col_idx: Current column index
-            rows_raw: All row strings
+            grid_col: Current grid column index
+            tag_idx: Current tag index in the row's tag list
+            all_row_tags: Parsed tags for all rows
             num_rows: Total rows
             num_cols: Total columns
-            occupancy_grid: Current occupancy state
 
         Returns:
             Tuple of (rowspan, colspan)
         """
-        # Look right for <lcel> or <xcel> to determine colspan
-        colspan = 1
-        check_col = col_idx + 1
-        while check_col < num_cols:
-            if occupancy_grid[row_idx][check_col] != -1:
-                break
+        current_row_tags = all_row_tags[row_idx]
 
-            # Parse the row to check for <lcel> or <xcel> at this position
-            tags_at_position = self._get_tag_at_position(rows_raw[row_idx], check_col)
-            if TAG_LEFT_CELL in tags_at_position or TAG_CROSS_CELL in tags_at_position:
+        # Look ahead in current row's tags for <lcel> or <xcel> to determine colspan
+        colspan = 1
+        check_tag_idx = tag_idx + 1
+
+        while check_tag_idx < len(current_row_tags):
+            tag_type = current_row_tags[check_tag_idx][0]
+            if tag_type in [TAG_LEFT_CELL, TAG_CROSS_CELL]:
                 colspan += 1
-                check_col += 1
+                check_tag_idx += 1
             else:
                 break
 
-        # Look down for <ucel> or <xcel> to determine rowspan
+        # Look down in subsequent rows at the same grid column for <ucel> or <xcel>
+        # We need to find which tag in each subsequent row corresponds to grid_col
         rowspan = 1
         check_row = row_idx + 1
-        while check_row < num_rows:
-            if occupancy_grid[check_row][col_idx] != -1:
-                break
 
-            # Parse the row to check for <ucel> or <xcel> at this position
-            tags_at_position = self._get_tag_at_position(rows_raw[check_row], col_idx)
-            if TAG_UP_CELL in tags_at_position or TAG_CROSS_CELL in tags_at_position:
-                rowspan += 1
-                check_row += 1
+        while check_row < num_rows:
+            check_row_tags = all_row_tags[check_row]
+
+            # Find the tag index that corresponds to grid_col in check_row
+            # We do this by counting how many grid columns the tags before it occupy
+            current_grid_col = 0
+            found_tag_idx = -1
+
+            for idx, (tag_type, _) in enumerate(check_row_tags):
+                if current_grid_col == grid_col:
+                    found_tag_idx = idx
+                    break
+                # Each tag occupies at least one grid column
+                # (We can't easily determine colspan here without recursion,
+                # so we assume each tag corresponds to one grid position)
+                current_grid_col += 1
+
+            if found_tag_idx >= 0 and found_tag_idx < len(check_row_tags):
+                tag_type = check_row_tags[found_tag_idx][0]
+                if tag_type in [TAG_UP_CELL, TAG_CROSS_CELL]:
+                    rowspan += 1
+                    check_row += 1
+                else:
+                    break
             else:
                 break
 
         return rowspan, colspan
-
-    def _get_tag_at_position(self, row_str: str, col_idx: int) -> List[str]:
-        """Get tag type at specific column position in row."""
-        tags_and_content = self._parse_row_tags(row_str)
-        if col_idx < len(tags_and_content):
-            return [tags_and_content[col_idx][0]]
-        return []
 
     def _create_cell_content(self, text: str) -> CellContent:
         """Create CellContent from text."""

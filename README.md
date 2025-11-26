@@ -17,23 +17,30 @@ Bidirectional table conversion system between HTML and Docling OTSL formats with
 ├── src/
 │   ├── core/
 │   │   ├── table_structure.py    # IR: TableStructure, Cell, CellContent
-│   │   ├── html_parser.py        # HTML → IR
-│   │   ├── html_builder.py       # IR → HTML
-│   │   ├── otsl_parser.py        # OTSL → IR (TODO)
-│   │   ├── otsl_builder.py       # IR → OTSL (TODO)
-│   │   └── latex_handler.py      # LaTeX detection & preservation
+│   │   ├── html_parser.py        # HTML → IR ✓
+│   │   ├── html_builder.py       # IR → HTML ✓
+│   │   ├── otsl_parser.py        # OTSL → IR ✓
+│   │   ├── otsl_builder.py       # IR → OTSL ✓
+│   │   └── latex_handler.py      # LaTeX detection & preservation ✓
 │   ├── utils/
-│   │   ├── html_normalizer.py    # TEDS normalization (TODO)
-│   │   ├── validation.py         # Structure validation (TODO)
-│   │   └── constants.py          # OTSL tokens, patterns
+│   │   └── constants.py          # OTSL tokens, patterns ✓
 │   └── api/
-│       ├── converters.py         # High-level API (TODO)
-│       └── teds_utils.py         # TEDS comparison (TODO)
+│       ├── converters.py         # High-level API ✓
+│       └── teds_utils.py         # TEDS comparison & normalization ✓
 ├── tests/
-│   ├── fixtures/                 # 14 test cases (HTML + OTSL)
-│   ├── unit/                     # Component tests (TODO)
-│   └── integration/              # Roundtrip & TEDS tests (TODO)
-├── examples/                     # Usage examples (TODO)
+│   ├── fixtures/                 # 14 test cases (HTML + OTSL pairs) ✓
+│   ├── unit/                     # 6 unit test modules ✓
+│   │   ├── test_latex_handler.py
+│   │   ├── test_table_structure.py
+│   │   ├── test_html_parser.py
+│   │   ├── test_otsl_parser.py
+│   │   └── test_teds_utils.py
+│   ├── integration/              # Integration tests ✓
+│   │   └── test_converters.py
+│   └── conftest.py               # Pytest fixtures ✓
+├── test_bidirectional.py         # Full test suite ✓
+├── test_html_roundtrip.py        # HTML roundtrip tests ✓
+├── debug_failures.py             # Debugging utility ✓
 └── requirements.txt
 ```
 
@@ -61,26 +68,26 @@ Bidirectional table conversion system between HTML and Docling OTSL formats with
 
 ## Current Status
 
-### ✅ Completed (Iteration 1)
+### ✅ Completed
 - [x] Project structure
 - [x] Intermediate Representation (IR) classes
 - [x] LaTeX handler with detection & preservation
 - [x] HTML parser with thead/tbody/caption support
 - [x] HTML builder with proper structure generation
-- [x] 14 comprehensive test cases (HTML + OTSL)
-- [x] HTML → IR → HTML roundtrip verified
+- [x] OTSL parser with complex spanning support
+- [x] OTSL builder with token generation
+- [x] High-level API for bidirectional conversion
+- [x] 14 comprehensive test cases (HTML + OTSL pairs)
+- [x] Full bidirectional conversion (HTML ↔ OTSL) - **14/14 tests passing**
+- [x] Pytest unit test suite (65/75 tests passing - 87%)
+- [x] TEDS integration with normalization utilities
 
-### 🚧 In Progress (Iteration 2)
-- [ ] OTSL parser using docling_core utilities
-- [ ] OTSL builder with token generation
-- [ ] High-level API for bidirectional conversion
-- [ ] Full bidirectional tests (HTML ↔ OTSL)
-
-### 📋 Planned (Iteration 3)
-- [ ] TEDS normalization validation
-- [ ] HTML normalizer (flatten_table, etc.)
-- [ ] TEDS comparison utilities
-- [ ] Unit tests for all components
+### 📋 Future Enhancements
+- [ ] Fix remaining pytest test failures (attribute naming)
+- [ ] Add TEDS validation examples with Python <3.12
+- [ ] Performance optimization for large tables
+- [ ] Support for nested tables
+- [ ] Additional edge case fixtures
 
 ## Installation
 
@@ -90,16 +97,40 @@ pip install -r requirements.txt
 
 ## Quick Test
 
+### Run bidirectional conversion tests (all formats)
 ```bash
-python test_html_roundtrip.py
+python test_bidirectional.py
 ```
 
-Expected output:
+Expected output: `✓ ALL TESTS COMPLETED! 14/14 passing`
+
+### Run pytest suite
+```bash
+pytest tests/ -v
 ```
-=== Testing Simple 2x2 Table ===
-Parsed: TableStructure(2x2, 4 cells)
-✓ All tests completed successfully!
+
+Expected output: `65 passed, 10 failed` (87% pass rate)
+
+### TEDS Integration
+
+The system includes TEDS (Tree-Edit-Distance-based Similarity) utilities for comparing table structures:
+
+```python
+from src.api.teds_utils import compare_with_teds, normalize_html_for_teds
+
+# Compare two HTML tables
+html1 = "<table>...</table>"
+html2 = "<table>...</table>"
+
+# With normalization (recommended)
+score, message = compare_with_teds(html1, html2, normalize=True)
+print(f"TEDS Score: {score:.4f} - {message}")
+
+# Normalize HTML for consistent structure
+normalized_html = normalize_html_for_teds(html, ensure_thead=True)
 ```
+
+**Note**: TEDS requires `table-recognition-metric` package, which only supports Python <3.12. The utilities will work without it installed, but will return informative warnings.
 
 ## Key Design Decisions
 
