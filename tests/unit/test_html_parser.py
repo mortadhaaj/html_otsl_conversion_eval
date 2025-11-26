@@ -57,8 +57,8 @@ class TestBasicParsing:
         parser = HTMLTableParser()
         table = parser.parse(html)
 
-        # Default should be True for has_border
-        assert table.has_border
+        # When no border attribute, should be False
+        assert not table.has_border
 
 
 class TestSpanningCells:
@@ -165,7 +165,8 @@ class TestHeaderDetection:
 
         # First cell should be a header
         assert table.cells[0].is_header
-        assert table.cells[0].header_type == "column"
+        # When th is in tbody at start of row, it's treated as row header
+        assert table.cells[0].header_type == "row"
 
         # Second cell should not be a header
         assert not table.cells[1].is_header

@@ -92,7 +92,7 @@ class TestRoundtripHTML:
     def test_roundtrip_with_spanning(self, converter, spanning_html):
         """Test spanning preservation in HTML roundtrip."""
         original_ir = converter.html_to_ir(spanning_html)
-        reconstructed_html = converter.roundtrip_html(spanning_html)
+        otsl, reconstructed_html, _ = converter.roundtrip_html(spanning_html)
         reconstructed_ir = converter.html_to_ir(reconstructed_html)
 
         # Check structure is preserved

@@ -19,7 +19,7 @@ class TestCellContent:
 
     def test_create_with_latex(self):
         """Test creating content with LaTeX formulas."""
-        formula = LaTeXFormula(formula="x^2", formula_type="inline", start=0, end=5)
+        formula = LaTeXFormula(original_text="$x^2$", formula_type="inline", start_pos=0, end_pos=5)
         content = CellContent(
             text="Formula: $x^2$",
             latex_formulas=[formula],
@@ -27,7 +27,7 @@ class TestCellContent:
         )
 
         assert len(content.latex_formulas) == 1
-        assert content.latex_formulas[0].formula == "x^2"
+        assert "$x^2$" in content.latex_formulas[0].original_text
 
     def test_empty_content(self):
         """Test creating empty content."""

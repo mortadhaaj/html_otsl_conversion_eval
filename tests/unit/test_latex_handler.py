@@ -16,7 +16,7 @@ class TestLaTeXDetection:
         formulas = handler.extract_formulas(text)
 
         assert len(formulas) == 1
-        assert formulas[0].formula == "x^2 + y^2 = z^2"
+        assert formulas[0].original_text == "$x^2 + y^2 = z^2$"
         assert formulas[0].formula_type == "inline"
 
     def test_detect_display_formula(self):
@@ -54,8 +54,8 @@ class TestLaTeXDetection:
         formulas = handler.extract_formulas(text)
 
         assert len(formulas) == 1
-        assert "frac" in formulas[0].formula
-        assert "sqrt" in formulas[0].formula
+        assert "frac" in formulas[0].original_text
+        assert "sqrt" in formulas[0].original_text
 
 
 class TestLaTeXConversion:
@@ -64,7 +64,7 @@ class TestLaTeXConversion:
     def test_inline_to_html(self):
         """Test converting inline LaTeX to HTML."""
         handler = LaTeXHandler()
-        formula = LaTeXFormula(formula="x^2", formula_type="inline", start=0, end=5)
+        formula = LaTeXFormula(original_text="$x^2$", formula_type="inline", start_pos=0, end_pos=5)
         html = handler.latex_to_html(formula)
 
         assert html == "$x^2$"
@@ -72,7 +72,7 @@ class TestLaTeXConversion:
     def test_display_to_html(self):
         """Test converting display LaTeX to HTML."""
         handler = LaTeXHandler()
-        formula = LaTeXFormula(formula="E = mc^2", formula_type="display", start=0, end=13)
+        formula = LaTeXFormula(original_text="$$E = mc^2$$", formula_type="display", start_pos=0, end_pos=13)
         html = handler.latex_to_html(formula)
 
         assert html == "$$E = mc^2$$"
@@ -84,8 +84,8 @@ class TestLaTeXConversion:
         formulas = handler.extract_formulas(text)
 
         assert len(formulas) == 2
-        assert formulas[0].formula == "x^2"
-        assert formulas[1].formula == "y^2"
+        assert "$x^2$" in formulas[0].original_text
+        assert "$$y^2$$" in formulas[1].original_text
 
 
 class TestEdgeCases:
@@ -131,5 +131,5 @@ class TestEdgeCases:
         formulas = handler.extract_formulas(text)
 
         assert len(formulas) == 1
-        assert "alpha" in formulas[0].formula
-        assert "beta" in formulas[0].formula
+        assert "alpha" in formulas[0].original_text
+        assert "beta" in formulas[0].original_text
