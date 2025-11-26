@@ -74,7 +74,14 @@ class TEDSCalculator:
                 "TEDS calculator not available. Install table-recognition-metric package."
             )
 
-        return self._teds.evaluate(pred_html, gt_html)
+        # TEDS requires full HTML document structure
+        if '<html' not in pred_html.lower():
+            pred_html = f'<html><body>{pred_html}</body></html>'
+        if '<html' not in gt_html.lower():
+            gt_html = f'<html><body>{gt_html}</body></html>'
+
+        # TEDS object is callable
+        return self._teds(pred_html, gt_html)
 
     def compute_batch_scores(self, pred_htmls: list, gt_htmls: list) -> list:
         """
@@ -95,23 +102,24 @@ class TEDSCalculator:
                 "TEDS calculator not available. Install table-recognition-metric package."
             )
 
-        return [self._teds.evaluate(pred, gt) for pred, gt in zip(pred_htmls, gt_htmls)]
+        # TEDS object is callable
+        return [self._teds(pred, gt) for pred, gt in zip(pred_htmls, gt_htmls)]
 
 
 def normalize_html_for_teds(html_str: str, ensure_thead: bool = True) -> str:
     """
     Normalize HTML table for TEDS comparison.
 
-    TEDS is sensitive to HTML tree structure. Missing <thead> can change
-    the tree depth and affect scores. This function normalizes HTML to
-    ensure consistent structure.
+    TEDS requires full HTML document structure (<html><body>) and is
+    sensitive to tree structure. Missing <thead> can change the tree
+    depth and affect scores.
 
     Args:
-        html_str: HTML table string
+        html_str: HTML table string (can be just <table> or full HTML)
         ensure_thead: If True, ensure table has <thead> section
 
     Returns:
-        Normalized HTML string
+        Normalized HTML string with full document structure
     """
     from lxml import html as lxml_html
     from lxml import etree
@@ -122,7 +130,8 @@ def normalize_html_for_teds(html_str: str, ensure_thead: bool = True) -> str:
         table = tree if tree.tag == 'table' else tree.find('.//table')
 
         if table is None:
-            return html_str
+            # If no table found, wrap the input
+            table = lxml_html.fromstring(f'<table>{html_str}</table>')
 
         if ensure_thead:
             # Check if thead exists
@@ -163,11 +172,18 @@ def normalize_html_for_teds(html_str: str, ensure_thead: bool = True) -> str:
                             tbody.remove(first_row)
                             thead.append(first_row)
 
-        # Convert back to string
-        return lxml_html.tostring(table, encoding='unicode')
+        # Convert back to string and wrap in full HTML structure for TEDS
+        table_html = lxml_html.tostring(table, encoding='unicode')
+
+        # TEDS requires full HTML document structure
+        full_html = f'<html><body>{table_html}</body></html>'
+        return full_html
 
     except Exception as e:
-        warnings.warn(f"Failed to normalize HTML: {e}. Returning original HTML.")
+        warnings.warn(f"Failed to normalize HTML: {e}. Returning wrapped original.")
+        # Even on error, wrap in HTML structure for TEDS
+        if '<html' not in html_str.lower():
+            return f'<html><body>{html_str}</body></html>'
         return html_str
 
 
