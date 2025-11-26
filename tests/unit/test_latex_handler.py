@@ -2,7 +2,6 @@
 Unit tests for LaTeX formula handling.
 """
 
-import pytest
 from src.core.latex_handler import LaTeXHandler, LaTeXFormula
 
 
