@@ -40,13 +40,21 @@ class HTMLTableParser:
             ValueError: If no table found or parsing fails
         """
         # Parse HTML using lxml with html5lib fallback
+        tree = None
+        used_fallback = False
+
         try:
             tree = lxml_html.fromstring(html_str)
         except Exception as e:
             # Fallback to html5lib for malformed HTML
             try:
                 doc = html5lib.parse(html_str, namespaceHTMLElements=False)
-                tree = doc.getroot()
+                # Convert html5lib's ElementTree.Element to lxml by serializing and re-parsing
+                # html5lib uses xml.etree which doesn't support xpath, so we need lxml
+                import xml.etree.ElementTree as ET
+                html_bytes = ET.tostring(doc, encoding='utf-8', method='html')
+                tree = lxml_html.fromstring(html_bytes)
+                used_fallback = True
             except Exception as e2:
                 raise ValueError(f"Failed to parse HTML: {e}, fallback also failed: {e2}")
 
@@ -61,6 +69,23 @@ class HTMLTableParser:
 
         # Extract all rows (from thead, tbody, tfoot)
         all_rows, row_sections = self._extract_rows(table_elem)
+
+        # If lxml found no rows but html5lib is available, try html5lib fallback
+        # This handles cases where lxml misparses malformed HTML (e.g., unclosed tags)
+        if not all_rows and not used_fallback:
+            try:
+                doc = html5lib.parse(html_str, namespaceHTMLElements=False)
+                # Convert html5lib's ElementTree.Element to lxml
+                import xml.etree.ElementTree as ET
+                html_bytes = ET.tostring(doc, encoding='utf-8', method='html')
+                tree = lxml_html.fromstring(html_bytes)
+                table_elem = self._find_table(tree)
+                if table_elem is not None:
+                    caption_content = self._extract_caption(table_elem)
+                    has_border = self._has_border(table_elem)
+                    all_rows, row_sections = self._extract_rows(table_elem)
+            except Exception:
+                pass  # Fallback failed, use original lxml results
 
         if not all_rows:
             raise ValueError("Table has no rows")
