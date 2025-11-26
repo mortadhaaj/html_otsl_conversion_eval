@@ -263,6 +263,98 @@ def test_complex_spanning():
     return is_valid
 
 
+def test_teds_bidirectional():
+    """Test TEDS scores on bidirectional conversion for all fixtures.
+
+    This validates that HTML → OTSL → HTML roundtrip conversion produces
+    structurally identical tables by measuring TEDS (Tree-Edit-Distance-based
+    Similarity) scores.
+    """
+    print("\n=== Test 9: TEDS Bidirectional Conversion ===")
+
+    from src.api.teds_utils import TEDSCalculator
+
+    # Check if TEDS is available
+    teds_calc = TEDSCalculator()
+    if not teds_calc.is_available():
+        print("⚠ TEDS not available - skipping test")
+        print("  Install with: pip install table-recognition-metric (requires Python <3.12)")
+        return
+
+    print("✓ TEDS calculator available")
+
+    fixtures_dir = Path("tests/fixtures")
+    html_files = sorted(fixtures_dir.glob("*.html"))
+
+    converter = TableConverter()
+    results = []
+
+    print(f"\nTesting {len(html_files)} fixture files...\n")
+
+    for html_file in html_files:
+        print(f"Testing: {html_file.name}")
+
+        try:
+            # Read original HTML
+            original_html = html_file.read_text()
+
+            # Roundtrip: HTML → OTSL → HTML
+            otsl = converter.html_to_otsl(original_html)
+            reconstructed_html = converter.otsl_to_html(otsl)
+
+            # Compute TEDS score
+            teds_score = teds_calc.compute_score(reconstructed_html, original_html)
+
+            # Check if perfect match (≥0.99 allows for minor formatting differences)
+            is_perfect = teds_score >= 0.99
+            status = "✓" if is_perfect else "✗"
+
+            print(f"  {status} TEDS Score: {teds_score:.4f}")
+
+            if not is_perfect:
+                print(f"    ⚠ Warning: Score below threshold (0.99)")
+
+            results.append({
+                'file': html_file.name,
+                'teds_score': teds_score,
+                'perfect': is_perfect
+            })
+
+        except Exception as e:
+            print(f"  ✗ ERROR: {str(e)}")
+            results.append({
+                'file': html_file.name,
+                'teds_score': 0.0,
+                'perfect': False,
+                'error': str(e)
+            })
+
+    # Summary
+    print(f"\n=== TEDS Bidirectional Test Summary ===")
+    perfect_count = sum(1 for r in results if r.get('perfect', False))
+    total = len(results)
+    avg_score = sum(r['teds_score'] for r in results) / total if total > 0 else 0.0
+
+    print(f"Perfect matches (TEDS ≥ 0.99): {perfect_count}/{total}")
+    print(f"Average TEDS Score: {avg_score:.4f}")
+
+    # Detailed results
+    print(f"\nDetailed Results:")
+    for result in results:
+        status = "✓" if result.get('perfect', False) else "✗"
+        score = result['teds_score']
+        print(f"  {status} {result['file']}: {score:.4f}")
+
+    # Check if all passed
+    if perfect_count == total:
+        print(f"\n✓ ALL FIXTURES PASSED: Perfect TEDS scores on bidirectional conversion!")
+    else:
+        failed = total - perfect_count
+        print(f"\n⚠ {failed} fixture(s) with TEDS score < 0.99")
+
+    return perfect_count == total
+
+
 if __name__ == '__main__':
     try:
         print("=" * 60)
@@ -277,6 +369,7 @@ if __name__ == '__main__':
         test_latex_preservation()
         test_complex_spanning()
         test_fixture_files()
+        test_teds_bidirectional()
 
         print("\n" + "=" * 60)
         print("✓ ALL TESTS COMPLETED!")
