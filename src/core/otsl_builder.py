@@ -16,14 +16,16 @@ from src.utils.constants import (
 class OTSLTableBuilder:
     """Converts intermediate representation to OTSL format."""
 
-    def __init__(self, include_location: bool = True):
+    def __init__(self, include_location: bool = True, strict: bool = True):
         """
         Initialize OTSL builder.
 
         Args:
             include_location: If True, include random location coordinates
+            strict: If True, validate table structure. If False, skip validation (lenient mode)
         """
         self.include_location = include_location
+        self.strict = strict
 
     def build(self, table: TableStructure) -> str:
         """
@@ -38,10 +40,11 @@ class OTSLTableBuilder:
         Raises:
             ValueError: If table structure is invalid
         """
-        # Validate table
-        is_valid, errors = table.validate()
-        if not is_valid:
-            raise ValueError(f"Invalid table structure: {'; '.join(errors)}")
+        # Validate table (only in strict mode)
+        if self.strict:
+            is_valid, errors = table.validate()
+            if not is_valid:
+                raise ValueError(f"Invalid table structure: {'; '.join(errors)}")
 
         # Build OTSL parts
         parts = ['<otsl>']

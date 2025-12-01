@@ -15,14 +15,18 @@ from src.core.table_structure import TableStructure
 class TableConverter:
     """High-level API for table conversions."""
 
-    def __init__(self, preserve_latex: bool = True):
+    def __init__(self, preserve_latex: bool = True, strict: bool = True):
         """
         Initialize table converter.
 
         Args:
             preserve_latex: If True, detect and preserve LaTeX formulas
+            strict: If True, raise errors on malformed tables.
+                   If False, attempt to parse malformed tables with inconsistent structure.
+                   Useful for evaluating AI-generated tables that may have formatting errors.
         """
         self.preserve_latex = preserve_latex
+        self.strict = strict
 
     def html_to_otsl(self, html: str, include_location: bool = True) -> str:
         """
@@ -40,10 +44,10 @@ class TableConverter:
             >>> html = '<table><tr><td>A</td><td>B</td></tr></table>'
             >>> otsl = converter.html_to_otsl(html)
         """
-        parser = HTMLTableParser(preserve_latex=self.preserve_latex)
+        parser = HTMLTableParser(preserve_latex=self.preserve_latex, strict=self.strict)
         table_ir = parser.parse(html)
 
-        builder = OTSLTableBuilder(include_location=include_location)
+        builder = OTSLTableBuilder(include_location=include_location, strict=self.strict)
         otsl = builder.build(table_ir)
 
         return otsl
@@ -66,12 +70,13 @@ class TableConverter:
             >>> otsl = '<otsl><loc_1><loc_2><loc_3><loc_4><fcel>A<fcel>B<nl></otsl>'
             >>> html = converter.otsl_to_html(otsl)
         """
-        parser = OTSLTableParser(preserve_latex=self.preserve_latex)
+        parser = OTSLTableParser(preserve_latex=self.preserve_latex, strict=self.strict)
         table_ir = parser.parse(otsl)
 
         builder = HTMLTableBuilder(
             include_borders=include_borders,
-            normalize_for_teds=normalize_for_teds
+            normalize_for_teds=normalize_for_teds,
+            strict=self.strict
         )
         html = builder.build(table_ir)
 
@@ -92,7 +97,7 @@ class TableConverter:
             >>> table_ir = converter.html_to_ir('<table>...</table>')
             >>> print(f"Table: {table_ir.num_rows}x{table_ir.num_cols}")
         """
-        parser = HTMLTableParser(preserve_latex=self.preserve_latex)
+        parser = HTMLTableParser(preserve_latex=self.preserve_latex, strict=self.strict)
         return parser.parse(html)
 
     def otsl_to_ir(self, otsl: str) -> TableStructure:
@@ -109,7 +114,7 @@ class TableConverter:
             >>> converter = TableConverter()
             >>> table_ir = converter.otsl_to_ir('<otsl>...</otsl>')
         """
-        parser = OTSLTableParser(preserve_latex=self.preserve_latex)
+        parser = OTSLTableParser(preserve_latex=self.preserve_latex, strict=self.strict)
         return parser.parse(otsl)
 
     def ir_to_html(self, table_ir: TableStructure, include_borders: bool = True,
@@ -127,7 +132,8 @@ class TableConverter:
         """
         builder = HTMLTableBuilder(
             include_borders=include_borders,
-            normalize_for_teds=normalize_for_teds
+            normalize_for_teds=normalize_for_teds,
+            strict=self.strict
         )
         return builder.build(table_ir)
 
@@ -142,7 +148,7 @@ class TableConverter:
         Returns:
             OTSL string
         """
-        builder = OTSLTableBuilder(include_location=include_location)
+        builder = OTSLTableBuilder(include_location=include_location, strict=self.strict)
         return builder.build(table_ir)
 
     def roundtrip_html(self, html: str) -> Tuple[str, str, str]:

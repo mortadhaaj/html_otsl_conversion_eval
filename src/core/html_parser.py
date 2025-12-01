@@ -14,16 +14,19 @@ from src.core.latex_handler import LaTeXHandler
 class HTMLTableParser:
     """Converts HTML tables to intermediate representation."""
 
-    def __init__(self, preserve_latex: bool = True, normalize_whitespace: bool = True):
+    def __init__(self, preserve_latex: bool = True, normalize_whitespace: bool = True, strict: bool = True):
         """
         Initialize HTML parser.
 
         Args:
             preserve_latex: If True, detect and preserve LaTeX formulas
             normalize_whitespace: If True, normalize whitespace in cell content
+            strict: If True, raise errors on malformed tables.
+                   If False, attempt to parse malformed tables (empty rows, inconsistent columns).
         """
         self.preserve_latex = preserve_latex
         self.normalize_whitespace = normalize_whitespace
+        self.strict = strict
         self.latex_handler = LaTeXHandler() if preserve_latex else None
 
     def parse(self, html_str: str) -> TableStructure:
@@ -72,6 +75,18 @@ class HTMLTableParser:
         # Extract all rows (from thead, tbody, tfoot)
         all_rows, row_sections = self._extract_rows(table_elem)
 
+        # In non-strict mode, filter out empty rows (but do it after building cells)
+        # We'll need to do this carefully to avoid rowspan issues
+        filter_empty_rows = not self.strict
+        empty_row_indices = set()
+
+        if filter_empty_rows:
+            # First pass: identify which rows are empty
+            for idx, row in enumerate(all_rows):
+                cells = row.xpath('./td | ./th')
+                if not cells:
+                    empty_row_indices.add(idx)
+
         # If lxml found no rows but html5lib is available, try html5lib fallback
         # This handles cases where lxml misparses malformed HTML (e.g., unclosed tags)
         if not all_rows and not used_fallback:
@@ -92,14 +107,96 @@ class HTMLTableParser:
                 pass  # Fallback failed, use original lxml results
 
         if not all_rows:
-            raise ValueError("Table has no rows")
+            if self.strict:
+                raise ValueError("Table has no rows")
+            else:
+                # In non-strict mode, return a minimal table with one empty cell
+                return TableStructure(
+                    num_rows=1,
+                    num_cols=1,
+                    cells=[Cell(row_idx=0, col_idx=0, content=CellContent(text=""))],
+                    caption=caption_content
+                )
 
-        # Determine table dimensions
+        # Determine table dimensions (before filtering)
         num_cols = self._determine_num_cols(all_rows)
-        num_rows = len(all_rows)
+        num_rows_before = len(all_rows)
 
         # Build cells with occupancy tracking
-        cells, occupancy_grid = self._build_cells(all_rows, row_sections, num_rows, num_cols)
+        cells, occupancy_grid = self._build_cells(all_rows, row_sections, num_rows_before, num_cols)
+
+        # In non-strict mode with empty rows, adjust the structure
+        if filter_empty_rows and empty_row_indices:
+            # Filter out empty rows and adjust cell positions
+            # Create mapping from old row index to new row index
+            row_mapping = {}
+            new_row_idx = 0
+            for old_idx in range(num_rows_before):
+                if old_idx not in empty_row_indices:
+                    row_mapping[old_idx] = new_row_idx
+                    new_row_idx += 1
+
+            # Adjust cell positions and rowspans
+            filtered_cells = []
+            for cell in cells:
+                # Skip cells that start in empty rows
+                if cell.row_idx in empty_row_indices:
+                    continue
+
+                # Adjust row index
+                if cell.row_idx in row_mapping:
+                    new_cell_row = row_mapping[cell.row_idx]
+
+                    # Adjust rowspan to account for removed empty rows
+                    original_end_row = cell.row_idx + cell.rowspan
+                    new_rowspan = 1
+                    for r in range(cell.row_idx + 1, original_end_row):
+                        if r not in empty_row_indices:
+                            new_rowspan += 1
+
+                    # Create adjusted cell
+                    adjusted_cell = Cell(
+                        row_idx=new_cell_row,
+                        col_idx=cell.col_idx,
+                        rowspan=new_rowspan,
+                        colspan=cell.colspan,
+                        content=cell.content,
+                        is_header=cell.is_header,
+                        header_type=cell.header_type
+                    )
+                    filtered_cells.append(adjusted_cell)
+
+            cells = filtered_cells
+            num_rows = new_row_idx
+        else:
+            num_rows = num_rows_before
+
+        # In non-strict mode, fill any gaps in occupancy grid with empty cells
+        if not self.strict:
+            # Rebuild occupancy grid after adjustments
+            occupancy_grid = [[-1] * num_cols for _ in range(num_rows)]
+            for idx, cell in enumerate(cells):
+                for r in range(cell.row_idx, min(cell.row_idx + cell.rowspan, num_rows)):
+                    for c in range(cell.col_idx, min(cell.col_idx + cell.colspan, num_cols)):
+                        if 0 <= r < num_rows and 0 <= c < num_cols:
+                            occupancy_grid[r][c] = idx
+
+            # Fill gaps
+            for row_idx in range(num_rows):
+                for col_idx in range(num_cols):
+                    if occupancy_grid[row_idx][col_idx] == -1:
+                        # Create empty cell for unoccupied position
+                        cell = Cell(
+                            row_idx=row_idx,
+                            col_idx=col_idx,
+                            rowspan=1,
+                            colspan=1,
+                            content=CellContent(text=""),
+                            is_header=False,
+                            header_type=None
+                        )
+                        cells.append(cell)
+                        occupancy_grid[row_idx][col_idx] = len(cells) - 1
 
         # Identify column and row headers
         column_headers, row_headers = self._identify_headers(cells, row_sections, num_rows, num_cols)
@@ -201,6 +298,33 @@ class HTMLTableParser:
 
         return rows, row_sections
 
+    def _sanitize_span_value(self, value: str) -> int:
+        """
+        Sanitize colspan/rowspan value from HTML attribute.
+
+        Handles cases where values have escaped quotes like colspan=\"2\"
+        or other malformed attribute values.
+
+        Args:
+            value: Raw attribute value (could be '2', '"2"', '\\"2\\"', etc.)
+
+        Returns:
+            Integer span value (default 1 if parsing fails)
+        """
+        if not value:
+            return 1
+
+        # Strip backslashes and quotes
+        sanitized = value.strip()
+        sanitized = sanitized.replace('\\', '')  # Remove backslashes
+        sanitized = sanitized.strip('"\'')  # Remove surrounding quotes
+
+        try:
+            return int(sanitized)
+        except (ValueError, TypeError):
+            # If still can't parse, return 1
+            return 1
+
     def _determine_num_cols(self, rows: List) -> int:
         """
         Determine the number of columns in the table.
@@ -212,7 +336,8 @@ class HTMLTableParser:
         for row in rows:
             cols_in_row = 0
             for cell in row.xpath('./td | ./th'):
-                colspan = int(cell.get('colspan', 1))
+                colspan_str = cell.get('colspan', '1')
+                colspan = self._sanitize_span_value(colspan_str)
                 cols_in_row += colspan
             max_cols = max(max_cols, cols_in_row)
 
@@ -244,9 +369,18 @@ class HTMLTableParser:
                     # Skip cells that overflow
                     continue
 
-                # Get span attributes
-                rowspan = int(cell_elem.get('rowspan', 1))
-                colspan = int(cell_elem.get('colspan', 1))
+                # Get span attributes (sanitize to handle escaped quotes like colspan=\"2\")
+                rowspan_str = cell_elem.get('rowspan', '1')
+                colspan_str = cell_elem.get('colspan', '1')
+                rowspan = self._sanitize_span_value(rowspan_str)
+                colspan = self._sanitize_span_value(colspan_str)
+
+                # Clamp spans to table boundaries (prevents cells extending beyond table)
+                # This is essential for malformed HTML where cells have impossible rowspan/colspan
+                max_rowspan = num_rows - row_idx
+                max_colspan = num_cols - col_idx
+                rowspan = min(rowspan, max_rowspan)
+                colspan = min(colspan, max_colspan)
 
                 # Determine if header
                 is_header = cell_elem.tag == 'th' or section == 'thead'

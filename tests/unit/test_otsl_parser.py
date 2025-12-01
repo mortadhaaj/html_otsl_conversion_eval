@@ -96,6 +96,48 @@ class TestEmptyCells:
         for cell in table.cells:
             assert cell.content.text == ""
 
+    def test_empty_cell_with_rowspan(self):
+        """Test empty cell that spans multiple rows (regression test for issue)."""
+        # OTSL with empty cell at (0,1) that spans 2 rows
+        # Row 0: [Cell A] [Empty spanning 2 rows]
+        # Row 1: [Cell B] [continued from above]
+        otsl = "<otsl><loc_10><loc_20><loc_100><loc_200><fcel>A<ecel><nl><fcel>B<ucel><nl></otsl>"
+        parser = OTSLTableParser()
+        table = parser.parse(otsl)
+
+        assert table.num_rows == 2
+        assert table.num_cols == 2
+        assert len(table.cells) == 3  # Only 3 cells created
+
+        # Find the empty cell
+        empty_cell = next((c for c in table.cells if c.content.text == ""), None)
+        assert empty_cell is not None
+        assert empty_cell.row_idx == 0
+        assert empty_cell.col_idx == 1
+        assert empty_cell.rowspan == 2  # Should span 2 rows!
+        assert empty_cell.colspan == 1
+
+    def test_empty_cell_with_colspan_and_rowspan(self):
+        """Test empty cell with both colspan and rowspan."""
+        # OTSL with empty cell at (0,1) that spans 2 rows and 2 columns
+        # Row 0: [Cell A] [Empty spanning 2x2]
+        # Row 1: [Cell B] [continued from above]
+        otsl = "<otsl><loc_10><loc_20><loc_30><loc_100><loc_200><loc_300><fcel>A<ecel><lcel><nl><fcel>B<ucel><xcel><nl></otsl>"
+        parser = OTSLTableParser()
+        table = parser.parse(otsl)
+
+        assert table.num_rows == 2
+        assert table.num_cols == 3
+        assert len(table.cells) == 3
+
+        # Find the empty cell
+        empty_cell = next((c for c in table.cells if c.content.text == ""), None)
+        assert empty_cell is not None
+        assert empty_cell.row_idx == 0
+        assert empty_cell.col_idx == 1
+        assert empty_cell.rowspan == 2
+        assert empty_cell.colspan == 2
+
 
 class TestLaTeXParsing:
     """Test parsing OTSL with LaTeX formulas."""

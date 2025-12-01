@@ -16,7 +16,8 @@ class HTMLTableBuilder:
 
     def __init__(self, include_borders: bool = True,
                  normalize_for_teds: bool = False,
-                 preserve_latex_as_text: bool = True):
+                 preserve_latex_as_text: bool = True,
+                 strict: bool = True):
         """
         Initialize HTML builder.
 
@@ -24,10 +25,12 @@ class HTMLTableBuilder:
             include_borders: If True, add border attribute to table
             normalize_for_teds: If True, ensure consistent thead/tbody structure for TEDS
             preserve_latex_as_text: If True, keep LaTeX as plain text (e.g., "$x^2$")
+            strict: If True, validate table structure. If False, skip validation (lenient mode)
         """
         self.include_borders = include_borders
         self.normalize_for_teds = normalize_for_teds
         self.preserve_latex_as_text = preserve_latex_as_text
+        self.strict = strict
         self.latex_handler = LaTeXHandler()
 
     def build(self, table: TableStructure) -> str:
@@ -43,10 +46,11 @@ class HTMLTableBuilder:
         Raises:
             ValueError: If table structure is invalid
         """
-        # Validate table
-        is_valid, errors = table.validate()
-        if not is_valid:
-            raise ValueError(f"Invalid table structure: {'; '.join(errors)}")
+        # Validate table (only in strict mode)
+        if self.strict:
+            is_valid, errors = table.validate()
+            if not is_valid:
+                raise ValueError(f"Invalid table structure: {'; '.join(errors)}")
 
         # Build table element
         table_attribs = {}

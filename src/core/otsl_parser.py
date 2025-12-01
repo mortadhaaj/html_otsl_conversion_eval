@@ -17,14 +17,17 @@ from src.utils.constants import (
 class OTSLTableParser:
     """Converts OTSL format to intermediate representation."""
 
-    def __init__(self, preserve_latex: bool = True):
+    def __init__(self, preserve_latex: bool = True, strict: bool = True):
         """
         Initialize OTSL parser.
 
         Args:
             preserve_latex: If True, detect and preserve LaTeX formulas
+            strict: If True, raise errors on inconsistent table structure.
+                   If False, attempt to parse malformed tables by padding/truncating rows.
         """
         self.preserve_latex = preserve_latex
+        self.strict = strict
         self.latex_handler = LaTeXHandler() if preserve_latex else None
 
     def parse(self, otsl_str: str) -> TableStructure:
@@ -55,10 +58,22 @@ class OTSLTableParser:
         """
         # Remove <otsl> wrapper and clean
         content = otsl_str.strip()
+
+        # Check for opening tag
         if not content.startswith('<otsl>'):
-            raise ValueError("OTSL string must start with <otsl>")
+            if self.strict:
+                raise ValueError("OTSL string must start with <otsl>")
+            else:
+                # In lenient mode, add missing opening tag
+                content = '<otsl>' + content
+
+        # Check for closing tag
         if not content.endswith('</otsl>'):
-            raise ValueError("OTSL string must end with </otsl>")
+            if self.strict:
+                raise ValueError("OTSL string must end with </otsl>")
+            else:
+                # In lenient mode, auto-close truncated OTSL
+                content = content + '</otsl>'
 
         content = content[6:-7].strip()  # Remove <otsl> and </otsl>
 
@@ -149,6 +164,18 @@ class OTSLTableParser:
         num_rows = len(rows_raw)
         num_cols = max_cols
 
+        # In non-strict mode, normalize row lengths by padding with empty cells
+        if not self.strict:
+            for row_idx, tag_list in enumerate(all_row_tags):
+                if len(tag_list) < max_cols:
+                    # Pad short rows with empty cells
+                    padding_needed = max_cols - len(tag_list)
+                    for _ in range(padding_needed):
+                        tag_list.append((TAG_EMPTY_CELL, ''))
+                elif len(tag_list) > max_cols:
+                    # Truncate long rows
+                    all_row_tags[row_idx] = tag_list[:max_cols]
+
         # Create occupancy grid
         occupancy_grid = [[-1] * num_cols for _ in range(num_rows)]
         cells = []
@@ -184,21 +211,32 @@ class OTSLTableParser:
                     # Create empty cell
                     cell_content = CellContent(text="", latex_formulas=[], has_math_tags=False)
 
+                    # Determine spans by looking ahead in tag_list (empty cells can also span!)
+                    rowspan, colspan = self._determine_spans_from_tags(
+                        row_idx, grid_col, tag_idx, all_row_tags, num_rows, num_cols
+                    )
+
                     cell = Cell(
                         row_idx=row_idx,
                         col_idx=grid_col,
-                        rowspan=1,
-                        colspan=1,
+                        rowspan=rowspan,
+                        colspan=colspan,
                         content=cell_content,
                         is_header=False,
                         header_type=None
                     )
 
                     cells.append(cell)
-                    occupancy_grid[row_idx][grid_col] = cell_idx
+
+                    # Mark occupancy for all spanned cells
+                    for r in range(row_idx, min(row_idx + rowspan, num_rows)):
+                        for c in range(grid_col, min(grid_col + colspan, num_cols)):
+                            occupancy_grid[r][c] = cell_idx
+
                     cell_idx += 1
-                    grid_col += 1
-                    tag_idx += 1
+                    grid_col += colspan
+                    # Skip over the empty cell tag plus any colspan markers (lcel/xcel)
+                    tag_idx += 1 + (colspan - 1)
                     continue
 
                 # Determine if header

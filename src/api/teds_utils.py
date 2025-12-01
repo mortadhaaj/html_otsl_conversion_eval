@@ -106,7 +106,45 @@ class TEDSCalculator:
         return [self._teds(pred, gt) for pred, gt in zip(pred_htmls, gt_htmls)]
 
 
-def normalize_html_for_teds(html_str: str, ensure_thead: bool = True) -> str:
+def normalize_arabic_numerals_to_english(text: str) -> str:
+    """
+    Convert Arabic (Eastern Arabic) and Persian numerals to English numerals.
+
+    Handles both Arabic-Indic numerals (٠-٩) and Extended Arabic-Indic/Persian numerals (۰-۹).
+    English numerals (0-9) remain unchanged.
+
+    Uses efficient str.translate() for O(n) performance.
+
+    Args:
+        text: Text containing numerals
+
+    Returns:
+        Text with all Arabic/Persian numerals converted to English (0-9)
+
+    Examples:
+        >>> normalize_arabic_numerals_to_english("٥,٩١٦")
+        "5,916"
+        >>> normalize_arabic_numerals_to_english("۱۲۳")
+        "123"
+        >>> normalize_arabic_numerals_to_english("123")
+        "123"
+    """
+    # Create translation table mapping Unicode codepoints
+    # Arabic-Indic numerals (Eastern Arabic: ٠-٩) U+0660 to U+0669
+    # Extended Arabic-Indic/Persian numerals (۰-۹) U+06F0 to U+06F9
+    translation_table = str.maketrans(
+        '٠١٢٣٤٥٦٧٨٩'  # Arabic-Indic (U+0660-U+0669)
+        '۰۱۲۳۴۵۶۷۸۹',  # Persian/Extended Arabic-Indic (U+06F0-U+06F9)
+        '0123456789'      # English numerals
+        '0123456789'      # English numerals (for Persian)
+    )
+
+    return text.translate(translation_table)
+
+
+def normalize_html_for_teds(html_str: str, ensure_thead: bool = True,
+                            normalize_numbers: bool = True,
+                            force_first_row_thead: bool = False) -> str:
     """
     Normalize HTML table for TEDS comparison.
 
@@ -116,15 +154,31 @@ def normalize_html_for_teds(html_str: str, ensure_thead: bool = True) -> str:
 
     Args:
         html_str: HTML table string (can be just <table> or full HTML)
-        ensure_thead: If True, ensure table has <thead> section
+        ensure_thead: If True, ensure table has <thead> section (only if first row has <th> tags)
+        normalize_numbers: If True, convert Arabic/Persian numerals to English numerals (default: True)
+        force_first_row_thead: If True, force first row into <thead> even if it uses <td> tags (default: False)
 
     Returns:
         Normalized HTML string with full document structure
+
+    Examples:
+        >>> html = '<table><tr><td>٥,٩١٦</td></tr></table>'
+        >>> normalized = normalize_html_for_teds(html, normalize_numbers=True)
+        >>> '5,916' in normalized
+        True
+        >>> html = '<table><tbody><tr><td>Header</td></tr><tr><td>Data</td></tr></tbody></table>'
+        >>> normalized = normalize_html_for_teds(html, force_first_row_thead=True)
+        >>> '<thead>' in normalized
+        True
     """
     from lxml import html as lxml_html
     from lxml import etree
 
     try:
+        # Normalize Arabic/Persian numerals to English if requested
+        if normalize_numbers:
+            html_str = normalize_arabic_numerals_to_english(html_str)
+
         # Parse HTML
         tree = lxml_html.fromstring(html_str)
         table = tree if tree.tag == 'table' else tree.find('.//table')
@@ -133,20 +187,29 @@ def normalize_html_for_teds(html_str: str, ensure_thead: bool = True) -> str:
             # If no table found, wrap the input
             table = lxml_html.fromstring(f'<table>{html_str}</table>')
 
-        if ensure_thead:
+        if ensure_thead or force_first_row_thead:
             # Check if thead exists
             thead = table.find('.//thead')
 
             if thead is None:
-                # Create thead from first tr if it contains th elements
+                # Create thead from first tr
                 tbody = table.find('.//tbody')
                 if tbody is None:
                     # Get all tr elements directly under table
                     rows = table.findall('./tr')
                     if rows:
                         first_row = rows[0]
-                        # Check if first row has th elements
-                        if first_row.findall('.//th'):
+                        # Check if first row should be moved to thead
+                        # Either it has <th> elements, or force_first_row_thead is True
+                        has_th_elements = bool(first_row.findall('.//th'))
+                        should_create_thead = force_first_row_thead or has_th_elements
+
+                        if should_create_thead:
+                            # If forcing first row to thead and it has <td> tags, convert them to <th>
+                            if force_first_row_thead and not has_th_elements:
+                                for td in first_row.findall('.//td'):
+                                    td.tag = 'th'
+
                             # Create thead and move first row into it
                             thead = etree.Element('thead')
                             table.insert(0, thead)
@@ -161,11 +224,19 @@ def normalize_html_for_teds(html_str: str, ensure_thead: bool = True) -> str:
                                     table.remove(row)
                                     tbody.append(row)
                 else:
-                    # Check if first row in tbody has th elements
+                    # Check if first row in tbody should be moved to thead
                     rows = tbody.findall('./tr')
                     if rows:
                         first_row = rows[0]
-                        if first_row.findall('.//th'):
+                        has_th_elements = bool(first_row.findall('.//th'))
+                        should_create_thead = force_first_row_thead or has_th_elements
+
+                        if should_create_thead:
+                            # If forcing first row to thead and it has <td> tags, convert them to <th>
+                            if force_first_row_thead and not has_th_elements:
+                                for td in first_row.findall('.//td'):
+                                    td.tag = 'th'
+
                             # Create thead and move first row from tbody
                             thead = etree.Element('thead')
                             table.insert(0, thead)
@@ -189,7 +260,9 @@ def normalize_html_for_teds(html_str: str, ensure_thead: bool = True) -> str:
 
 def compare_with_teds(html1: str, html2: str,
                       structure_only: bool = False,
-                      normalize: bool = True) -> Tuple[float, str]:
+                      normalize: bool = True,
+                      normalize_numbers: bool = True,
+                      force_first_row_thead: bool = False) -> Tuple[float, str]:
     """
     Compare two HTML tables using TEDS metric.
 
@@ -198,6 +271,8 @@ def compare_with_teds(html1: str, html2: str,
         html2: Second HTML table string
         structure_only: If True, only compare structure (ignore content)
         normalize: If True, normalize HTML before comparison
+        normalize_numbers: If True, convert Arabic/Persian numerals to English (default: True)
+        force_first_row_thead: If True, force first row into <thead> even if it uses <td> tags (default: False)
 
     Returns:
         Tuple of (teds_score, message)
@@ -214,8 +289,10 @@ def compare_with_teds(html1: str, html2: str,
 
     try:
         if normalize:
-            html1 = normalize_html_for_teds(html1)
-            html2 = normalize_html_for_teds(html2)
+            html1 = normalize_html_for_teds(html1, normalize_numbers=normalize_numbers,
+                                           force_first_row_thead=force_first_row_thead)
+            html2 = normalize_html_for_teds(html2, normalize_numbers=normalize_numbers,
+                                           force_first_row_thead=force_first_row_thead)
 
         score = calculator.compute_score(html1, html2)
 
